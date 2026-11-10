@@ -128,3 +128,8 @@ MAILERS = {
 DEFAULT_FROM_EMAIL = 'noreply@mailing-service.local'
 
 AUTH_USER_MODEL = 'users.CustomUser'
+
+
+LOGIN_URL = 'users:login'
+LOGIN_REDIRECT_URL = 'mailing:home'
+LOGOUT_REDIRECT_URL = 'mailing:home'

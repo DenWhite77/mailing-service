@@ -1,9 +1,9 @@
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse_lazy
-from django.views.generic import TemplateView, ListView, CreateView, UpdateView, DeleteView, DetailView
 from django.views import View
-from django.shortcuts import redirect, get_object_or_404
-
+from django.views.generic import TemplateView, ListView, CreateView, UpdateView, DeleteView, DetailView
+from django.core.cache import cache
 
 from .models import Client, Message, Mailing, MailingAttempt
 from .forms import ClientForm, MessageForm, MailingForm
@@ -15,10 +15,25 @@ class HomeView(TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['total_mailings'] = 0
-        context['total_attempts'] = 0
-        context['successful_attempts'] = 0
-        context['total_clients'] = 0
+        user = self.request.user
+
+        if user.is_authenticated:
+            is_manager = user.groups.filter(name='Менеджеры').exists()
+
+            if is_manager:
+                mailings = Mailing.objects.all()
+                attempts = MailingAttempt.objects.all()
+                clients = Client.objects.all()
+            else:
+                mailings = Mailing.objects.filter(owner=user)
+                attempts = MailingAttempt.objects.filter(mailing__owner=user)
+                clients = Client.objects.filter(owner=user)
+
+            context['total_mailings'] = mailings.count()
+            context['total_attempts'] = attempts.count()
+            context['successful_attempts'] = attempts.filter(status='success').count()
+            context['total_clients'] = clients.count()
+
         return context
 
 
@@ -32,8 +47,10 @@ class ClientListView(LoginRequiredMixin, ListView):
     context_object_name = 'clients'
 
     def get_queryset(self):
-        # Показываем только клиентов текущего пользователя
-        return Client.objects.filter(owner=self.request.user)
+        user = self.request.user
+        if user.groups.filter(name='Менеджеры').exists():
+            return Client.objects.all()
+        return Client.objects.filter(owner=user)
 
 
 class ClientCreateView(LoginRequiredMixin, CreateView):
@@ -43,7 +60,6 @@ class ClientCreateView(LoginRequiredMixin, CreateView):
     success_url = reverse_lazy('mailing:client_list')
 
     def form_valid(self, form):
-        # Автоматически назначаем владельца
         form.instance.owner = self.request.user
         return super().form_valid(form)
 
@@ -55,7 +71,6 @@ class ClientUpdateView(LoginRequiredMixin, UpdateView):
     success_url = reverse_lazy('mailing:client_list')
 
     def get_queryset(self):
-        # Редактировать можно только своих клиентов
         return Client.objects.filter(owner=self.request.user)
 
 
@@ -65,9 +80,12 @@ class ClientDeleteView(LoginRequiredMixin, DeleteView):
     success_url = reverse_lazy('mailing:client_list')
 
     def get_queryset(self):
-        # Удалять можно только своих клиентов
         return Client.objects.filter(owner=self.request.user)
 
+
+# ============================================================
+# CRUD ДЛЯ СООБЩЕНИЙ (MESSAGE)
+# ============================================================
 
 class MessageListView(LoginRequiredMixin, ListView):
     model = Message
@@ -75,7 +93,10 @@ class MessageListView(LoginRequiredMixin, ListView):
     context_object_name = 'messages'
 
     def get_queryset(self):
-        return Message.objects.filter(owner=self.request.user)
+        user = self.request.user
+        if user.groups.filter(name='Менеджеры').exists():
+            return Message.objects.all()
+        return Message.objects.filter(owner=user)
 
 
 class MessageCreateView(LoginRequiredMixin, CreateView):
@@ -109,7 +130,7 @@ class MessageDeleteView(LoginRequiredMixin, DeleteView):
 
 
 # ============================================================
-# СПИСКИ ДЛЯ РАССЫЛОК И ПОПЫТОК (пока заглушки для меню)
+# CRUD ДЛЯ РАССЫЛОК (MAILING)
 # ============================================================
 
 class MailingListView(LoginRequiredMixin, ListView):
@@ -118,7 +139,23 @@ class MailingListView(LoginRequiredMixin, ListView):
     context_object_name = 'mailings'
 
     def get_queryset(self):
-        return Mailing.objects.filter(owner=self.request.user)
+        user = self.request.user
+        cache_key = f'mailing_list_{user.id}'
+
+        # Пытаемся взять из кеша
+        queryset = cache.get(cache_key)
+        if queryset is None:
+            if user.groups.filter(name='Менеджеры').exists():
+                queryset = list(Mailing.objects.all())
+            else:
+                queryset = list(Mailing.objects.filter(owner=user))
+            # Кешируем на 5 минут
+            cache.set(cache_key, queryset, timeout=300)
+            print(f'[CACHE] Список рассылок пользователя {user.id} из БД')
+        else:
+            print(f'[CACHE] Список рассылок пользователя {user.id} из Redis')
+
+        return queryset
 
 
 class MailingCreateView(LoginRequiredMixin, CreateView):
@@ -128,9 +165,10 @@ class MailingCreateView(LoginRequiredMixin, CreateView):
     success_url = reverse_lazy('mailing:mailing_list')
 
     def form_valid(self, form):
-        # Автоматически назначаем владельца
         form.instance.owner = self.request.user
-        return super().form_valid(form)
+        response = super().form_valid(form)
+        cache.delete(f'mailing_list_{self.request.user.id}')
+        return response
 
 
 class MailingDetailView(LoginRequiredMixin, DetailView):
@@ -139,7 +177,10 @@ class MailingDetailView(LoginRequiredMixin, DetailView):
     context_object_name = 'mailing'
 
     def get_queryset(self):
-        return Mailing.objects.filter(owner=self.request.user)
+        user = self.request.user
+        if user.groups.filter(name='Менеджеры').exists():
+            return Mailing.objects.all()
+        return Mailing.objects.filter(owner=user)
 
 
 class MailingDeleteView(LoginRequiredMixin, DeleteView):
@@ -148,8 +189,32 @@ class MailingDeleteView(LoginRequiredMixin, DeleteView):
     success_url = reverse_lazy('mailing:mailing_list')
 
     def get_queryset(self):
-        return Mailing.objects.filter(owner=self.request.user)
+        user = self.request.user
+        if user.groups.filter(name='Менеджеры').exists():
+            return Mailing.objects.all()
+        return Mailing.objects.filter(owner=user)
 
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        cache.delete(f'mailing_list_{self.request.user.id}')
+        return response
+
+
+class MailingSendView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        user = request.user
+        if user.groups.filter(name='Менеджеры').exists():
+            mailing = get_object_or_404(Mailing, pk=pk)
+        else:
+            mailing = get_object_or_404(Mailing, pk=pk, owner=user)
+
+        send_mailing(mailing.pk)
+        return redirect('mailing:mailing_detail', pk=pk)
+
+
+# ============================================================
+# СПИСОК ПОПЫТОК (MAILING ATTEMPT)
+# ============================================================
 
 class AttemptListView(LoginRequiredMixin, ListView):
     model = MailingAttempt
@@ -157,11 +222,7 @@ class AttemptListView(LoginRequiredMixin, ListView):
     context_object_name = 'attempts'
 
     def get_queryset(self):
-        return MailingAttempt.objects.filter(mailing__owner=self.request.user)
-
-class MailingSendView(LoginRequiredMixin, View):
-    def post(self, request, pk):
-        # Проверка, что это рассылка текущего пользователя (если не админ)
-        mailing = get_object_or_404(Mailing, pk=pk, owner=request.user)
-        send_mailing(mailing.pk)
-        return redirect('mailing:mailing_detail', pk=pk)
+        user = self.request.user
+        if user.groups.filter(name='Менеджеры').exists():
+            return MailingAttempt.objects.all()
+        return MailingAttempt.objects.filter(mailing__owner=user)
