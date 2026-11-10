@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+
+{% block title %}Попытки отправки{% endblock %}
+
+{% block content %}
+<h1>Попытки отправки</h1>
+
+<table class="table table-striped mt-4">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Время попытки</th>
+            <th>Рассылка</th>
+            <th>Статус</th>
+            <th>Ответ сервера</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for attempt in attempts %}
+        <tr>
+            <td>{{ attempt.id }}</td>
+            <td>{{ attempt.attempt_time|date:"d.m.Y H:i:s" }}</td>
+            <td>#{{ attempt.mailing.id }} — {{ attempt.mailing.message.subject }}</td>
+            <td>
+                {% if attempt.status == 'success' %}
+                <span class="badge bg-success">Успешно</span>
+                {% else %}
+                <span class="badge bg-danger">Ошибка</span>
+                {% endif %}
+            </td>
+            <td>{{ attempt.server_response|truncatechars:50 }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="5" class="text-center">Попыток отправки пока нет.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

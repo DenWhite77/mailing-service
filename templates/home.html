@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+
+{% block title %}Главная — Mailing Service{% endblock %}
+
+{% block content %}
+<h1>Сервис управления рассылками</h1>
+<p class="lead">Создавайте рассылки, управляйте получателями и следите за статистикой.</p>
+
+{% if user.is_authenticated %}
+    <div class="row mt-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">{{ total_mailings|default:0 }}</h5>
+                    <p class="card-text">Рассылок</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">{{ total_attempts|default:0 }}</h5>
+                    <p class="card-text">Попыток</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">{{ successful_attempts|default:0 }}</h5>
+                    <p class="card-text">Успешных</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title">{{ total_clients|default:0 }}</h5>
+                    <p class="card-text">Получателей</p>
+                </div>
+            </div>
+        </div>
+    </div>
+{% else %}
+    <div class="mt-4">
+        <a href="{% url 'users:login' %}" class="btn btn-primary">Войти</a>
+        <a href="{% url 'users:register' %}" class="btn btn-outline-primary">Регистрация</a>
+    </div>
+{% endif %}
+{% endblock %}
