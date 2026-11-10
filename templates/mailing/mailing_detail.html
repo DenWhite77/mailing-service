@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+
+{% block title %}Рассылка #{{ mailing.id }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2>Рассылка #{{ mailing.id }}</h2>
+    </div>
+    <div class="card-body">
+        <p><strong>Статус:</strong> {{ mailing.get_status_display }}</p>
+        <p><strong>Время старта:</strong> {{ mailing.start_time|date:"d.m.Y H:i" }}</p>
+        <p><strong>Периодичность:</strong> {{ mailing.get_periodicity_display }}</p>
+        <p><strong>Тема письма:</strong> {{ mailing.message.subject }}</p>
+
+        <h4 class="mt-4">Получатели ({{ mailing.recipients.count }}):</h4>
+        <ul>
+            {% for client in mailing.recipients.all %}
+            <li>{{ client.full_name }} ({{ client.email }})</li>
+            {% empty %}
+            <li>Получатели не выбраны.</li>
+            {% endfor %}
+        </ul>
+
+       <hr>
+        <form action="{% url 'mailing:mailing_send' mailing.pk %}" method="post" class="d-inline">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-success" {% if mailing.status == 'completed' %}disabled{% endif %}>
+                🚀 Отправить сейчас
+            </button>
+        </form>
+        <a href="{% url 'mailing:mailing_list' %}" class="btn btn-secondary ms-2">Назад к списку</a>
+</div>
+{% endblock %}
